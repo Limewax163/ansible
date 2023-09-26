@@ -1,0 +1,129 @@
+  - name: FirstInstall #Просто название
+    hosts: "{{ select_host }}" #Так указываем что забираем данные из объявленных переменных в vars_prompt по имени (name)
+    become: true #Так пишем что все команды для плейбука будут выполняться под sudo правами
+    vars_prompt:  #В этой категории указываем заправшиваемые данные (вводимые вручную) которые Ansible будет возвращать, в ходе выполнения скрипта.
+    - name: ssh_user  #Переменная, которую нужно будет указывать в необходимом задании в виде "{{ ssh_user }}" и дальше по аналогии.
+      prompt: "Введите учетную запись администратора хоста"
+      private: false  #Определяет что вводиме данные будут отображаться при вводе (при отсутствии данной переменной вводимые данные будут скрыты, как при вводе паролей)
+    - name: ssh_pass
+      prompt: "Введите пароль от учетной записи администратора"
+    - name: new_hostname
+      prompt: "Введите новое имя хоста:"
+      private: false #Используется для отображения вводимого значения
+    - name: select_host
+      prompt: "Введите IP целевого хоста"
+      private: false
+
+#============================================================================
+    - name: domain_admin_user
+      prompt: "Введите учетную запись для ввода в домен"
+      private: false
+    - name: domain_admin_password
+      prompt: "Введите пароль от учетной записи для ввода в домен"
+#============================================================================
+
+    vars:  #В этой категории указываем данные которые Ansible будет подставлять в задания при выполнении скрипта.
+      ansible_ssh_user: "{{ ssh_user }}"
+      ansible_ssh_password: "{{ ssh_pass }}"
+
+#============================================================================
+      ansible_ssh_user: "{{ ssh_user }}"
+      ansible_ssh_password: "{{ ssh_pass }}"
+      domain_admin_user: "{{domain_admin_user}}"
+      domain_admin_password: "{{domain_admin_password}}"
+#============================================================================
+
+      cert: http://certificates/
+
+      main_repo_url: deb http://
+      dep_repo_url: deb http://
+
+      repository_key: http://
+
+      packages:
+        - app1
+        - app2
+
+    tasks:
+    - name: Удаление файла /etc/apt/sources.list
+      ansible.builtin.file: #Тип задачи Ansible для работы с файлом
+        path: /etc/apt/sources.list
+        state: absent #Тип действия. Absent = удалить (подтвердить отсутствие файла)
+    - name: Создание нового файла /etc/apt/sources.list с прописанными url репозиториев включая репозитории
+      copy: #copy = копирование. В совокупности с объявленныым "content" копирует данные
+        content: |
+          {{ main_repo_url }}
+          {{ dep_repo_url }}
+        dest: /etc/apt/sources.list #В какой файл копируются данные из content. Если файл не существует, то создает его.
+    - name: Скачивание и добавление ключа репозиториев
+      ansible.builtin.apt_key: #Тип задачи Ansible для работы с apt-key
+        url: "{{ repository_key }}"
+        state: present #Тип действия. Present = создать (подтвердить наличие файла)
+    - name: Установка пакетов
+      ansible.builtin.apt:
+        name: "{{ packages }}"
+        state: latest #Тип действия. latest = проверка на актуальную версию. Если пакет не установлен - установится последняя версия, если пакет установлен проверятся обновления и установится самая свежая версия
+        update_cache: yes # apt update
+    - name: Скачивание и сохранение сертификатов Root.crt и Issuer.crt в папку /etc/ssl/certs/ ================================================/4
+      get_url: #Получение файла по URL ссылке.
+        url: "{{ cert }}{{ item }}"  #В данном случае из репозитория указанного в информационном блоке vars, а {{ item }} подразумевает все файлы каталоге из URL.
+        dest: "/etc/ssl/certs/{{ item }}"  # Куда будут сохранены файлы из URL запросов.
+      with_items:  #С какими файлами необходимо работать.
+        - Root.crt
+        - Issuer.crt
+    - name: Обновление системного хранилища сертификатов
+      command: "update-ca-certificates"
+    - name: Скачивание файла /etc/resolv.conf, настроенного для ввода в домен
+      get_url:
+        url: http://****/resolv.conf
+        dest: /etc/resolv.conf
+        force: yes  #Если файл существует, то будет произведена замена.
+    - name: Изменение hostname машины
+      hostname:
+        name: "{{ new_hostname }}"  #Так указывается объявленный источник из информационного блока vars_prompt
+    - name: Копирование файла resolv.conf с репозитория на хост(хосты)
+      get_url:
+        url: http://****/resolv.conf
+        dest: /etc/resolv.conf
+        force: yes
+    - name: Проверка наличия конфигурационного файла fusioninventory_agent
+      ansible.builtin.wait_for:  #Все задачи после этой будут осуществляться в том случае если условие этой задачи выполняется.
+        path: /****/agent.cfg
+        state: present #Тип действия. Present = создать (подтвердить наличие файла)
+    - name: Изменение конфигурации FusionInventory agent для подключения к серверам
+      lineinfile:  #поиск строки в файле
+        path: /etc/fusioninventory/agent.cfg
+        regexp: '^#?delaytime =.*'  #шаблон поиска строки в файле
+        line: 'delaytime - 5'  #на что поменять найденную строку
+    - name: Изменение конфигурации FusionInventory agent для подключения к серверам
+      lineinfile:
+        path: /etc/fusioninventory/agent.cfg
+        insertafter: EOF  #аббривеатура обозначающая конец файла = ввести данные в конце файла.
+        line: 'server = http:/glpi.***.ru/fusioninventory/agent.cfg' #данные необходимые для ввода в этой задаче
+#либо если нужно ввести много строчек, они обозначаются в блоке, структура которого описана ниже.
+#       block:  |
+#         server = http:/glpi.soglasie.ru/fusioninventory/agent.cfg
+#         .......
+#         .......
+    - name: Перезагрузка сервиса FusionInventory Agent для применения настроек
+      service:  #работа с systemctl
+        name: fusioninventory-agent  #название сервиса
+        state: restarted  #действие ( start/restart/stop ) пока не понял как маскировать\размаскировывать сервисы (mask/unmask)
+
+#    Пока недопилено.возможно неработает.
+#    - name: Копирование конфигурационного файла для xrdp
+#      get_url:
+#        url: "{{ soglasie_repo }}/{{ item }}"
+#        dest: "/etc/xrdp/{{ item }}"
+#      with_items:
+#        - xrdp.ini
+#    - name: Обновление пакетов
+#      apt:
+#        upgrade: yes
+#    - name: join_domain
+#      ansible.builtin.shell:
+#        astra-ad-sssd-client -d soglasie.ru -u "{{domain_admin_user}}" -p "{{domain_admin_password}}" -y
+#    - name: Configured_NTP
+#      inspur.sm.edit_ntp:
+#        auto_date: "enable"
+#        server1: ntp.soglasie.ru

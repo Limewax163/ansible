@@ -1,0 +1,6 @@
+soglasie:
+  vars:
+    ansible_connection: ssh
+  hosts:
+#    172.17.90.87
+#    astra-first-install.local

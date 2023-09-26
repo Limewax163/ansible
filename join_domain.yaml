@@ -1,0 +1,36 @@
+  - name: join_domain
+    hosts: "{{ select_host }}"
+    become: true
+    vars_prompt:
+    - name: ssh_user
+      prompt: "Введите учетную запись администратора хоста"
+      private: false
+    - name: ssh_pass
+      prompt: "Введите пароль от учетной записи администратора"
+    - name: new_hostname
+      prompt: "Введите новое имя хоста:"
+      private: false
+    - name: select_host
+      prompt: "Введите IP целевого хоста"
+      private: false
+    - name: domain_admin_user
+      prompt: "Введите учетную запись для ввода в домен"
+      private: false
+    - name: domain_admin_password
+      prompt: "Введите пароль от учетной записи для ввода в домен"
+    vars:
+      ansible_ssh_user: "{{ ssh_user }}"
+      ansible_ssh_password: "{{ ssh_pass }}"
+      domain_admin_user: "{{domain_admin_user}}"
+      domain_admin_password: "{{domain_admin_password}}"
+    tasks:
+      - name: Изменение hostname машины
+        hostname:
+          name: "{{ new_hostname }}"
+      - name: join_domain
+        ansible.builtin.shell:
+          astra-ad-sssd-client -d soglasie.ru -u "{{domain_admin_user}}" -p "{{domain_admin_password}}" -y
+      - name: Configured_NTP
+        inspur.sm.edit_ntp:
+          auto_date: "enable"
+          server1: ntp.soglasie.ru
