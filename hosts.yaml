@@ -1,4 +1,4 @@
-soglasie:
+mygroup:
   vars:
     ansible_connection: ssh
   hosts:
